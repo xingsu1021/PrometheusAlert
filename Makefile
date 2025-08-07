@@ -34,7 +34,7 @@ ${TARGET}: ${SOURCE}
 	@echo ">> building code"
 	go mod tidy
 	go mod vendor
-	go build -ldflags "$(VERSION_LDFLAGS)" -o ${TARGET}
+	go build -buildvcs=false -ldflags "$(VERSION_LDFLAGS)" -o ${TARGET}
 
 format:
 	@echo ">> formatting code"

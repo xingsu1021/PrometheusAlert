@@ -175,31 +175,33 @@ func (c *PrometheusAlertController) PrometheusAlert() {
 			}
 			Alerts_Value, _ := p_alertmanager_json["alerts"].([]interface{})
 			//拆分告警消息
-			for _, AlertValue := range Alerts_Value {
-				p_alertmanager_json["alerts"] = Alerts_Value[0:0]
-				p_alertmanager_json["alerts"] = append(p_alertmanager_json["alerts"].([]interface{}), AlertValue)
-				go SetRecord(AlertValue)
-				//提取 prometheus 告警消息中的 label，用于和告警路由比对
-				xalert := AlertValue.(map[string]interface{})
-				//路由处理,可能存在多个路由都匹配成功，所以这里返回的是个列表sMsg
-				Return_pMsgs := AlertRouterSet(xalert, pMsg, PrometheusAlertTpl.Tpl)
-				for _, Return_pMsg := range Return_pMsgs {
-					//logs.Debug("当前模版：", Return_pMsg.TplName)
-					//获取渲染后的模版
-					err, msg := TransformAlertMessage(p_alertmanager_json, Return_pMsg.Tpl)
-
-					if err != nil {
-						//失败不发送消息
-						logs.Error(logsign, err.Error())
-						message = err.Error()
-					} else {
-						//发送消息
-						message = SendMessagePrometheusAlert(msg, &Return_pMsg, logsign)
+				for _, AlertValue := range Alerts_Value {
+					// 创建新的告警 JSON，确保每次处理一条告警
+					alertJson := make(map[string]interface{})
+					for k, v := range p_alertmanager_json {
+						if k != "alerts" {
+							alertJson[k] = v
+						}
 					}
-
+					alertJson["alerts"] = []interface{}{AlertValue} // 只包含当前告警
+					go SetRecord(AlertValue)
+					// 提取 prometheus 告警消息中的 label，用于和告警路由比对
+					xalert := AlertValue.(map[string]interface{})
+					// 路由处理，可能存在多个路由都匹配成功，所以这里返回的是个列表 sMsg
+					Return_pMsgs := AlertRouterSet(xalert, pMsg, PrometheusAlertTpl.Tpl)
+					for _, Return_pMsg := range Return_pMsgs {
+						// 获取渲染后的模版
+						err, msg := TransformAlertMessage(alertJson, Return_pMsg.Tpl)
+						if err != nil {
+							// 失败不发送消息
+							logs.Error(logsign, err.Error())
+							message = err.Error()
+						} else {
+							// 发送消息
+							message = SendMessagePrometheusAlert(msg, &Return_pMsg, logsign)
+						}
+					}
 				}
-
-			}
 		} else {
 			//获取渲染后的模版
 			err, msg := TransformAlertMessage(p_json, PrometheusAlertTpl.Tpl)
@@ -224,9 +226,7 @@ func (c *PrometheusAlertController) PrometheusAlert() {
 // 路由处理
 func AlertRouterSet(xalert map[string]interface{}, PMsg PrometheusAlertMsg, Tpl string) []PrometheusAlertMsg {
 	return_Msgs := []PrometheusAlertMsg{}
-	//原有的参数不变
-	PMsg.Tpl = Tpl
-	return_Msgs = append(return_Msgs, PMsg)
+	is_matched := false
 	//循环检测现有的路由规则，找到匹配的目标后，替换发送目标参数
 	for _, router_value := range GlobalAlertRouter {
 		LabelMap := []LabelMap{}
@@ -242,33 +242,54 @@ func AlertRouterSet(xalert map[string]interface{}, PMsg PrometheusAlertMsg, Tpl 
 			continue
 		}
 
+        // 记录告警的 labels，用于日志对比
+        alertLabels, _ := json.Marshal(xalert["labels"])
+        logs.Debug("处理告警路由【%s】，告警标签：%s, 路由规则：%s", router_value.Name, string(alertLabels), router_value.Rules)
+
 		for _, rule := range LabelMap {
-			for label_key, label_value := range xalert["labels"].(map[string]interface{}) {
-				//这里需要分两部分处理，一部分是正则规则，一部分是非正则规则
-				if rule.Regex {
-					//正则部分比对
-					if rule.Name == label_key {
-						tz := regexp.MustCompile(rule.Value)
-						if len(tz.FindAllString(label_value.(string), -1)) > 0 {
-							rules_num_match += 1
-						}
-					}
-
-				} else {
-					//非正则部分比对
-					if rule.Name == label_key && rule.Value == label_value.(string) {
-						rules_num_match += 1
-					}
-
-				}
-
-			}
-		}
+            labelFound := false
+            for label_key, label_value := range xalert["labels"].(map[string]interface{}) {
+                // 这里需要分两部分处理，一部分是正则规则，一部分是非正则规则
+                if rule.Name == label_key {
+                    labelFound = true
+                    if rule.Regex {
+                        // 正则部分比对
+                        tz := regexp.MustCompile(rule.Value)
+                        if len(tz.FindAllString(label_value.(string), -1)) > 0 {
+                            rules_num_match += 1
+                            logs.Debug("路由【%s】规则匹配成功：标签=%s, 正则值=%s, 实际值=%s", router_value.Name, rule.Name, rule.Value, label_value)
+                        } else {
+                            logs.Debug("路由【%s】规则匹配失败：标签=%s, 正则值=%s, 实际值=%s", router_value.Name, rule.Name, rule.Value, label_value)
+                        }
+                    } else {
+                        // 非正则部分比对
+                        if rule.Value == label_value.(string) {
+                            rules_num_match += 1
+                            logs.Debug("路由【%s】规则匹配成功：标签=%s, 期望值=%s, 实际值=%s", router_value.Name, rule.Name, rule.Value, label_value)
+                        } else {
+                            logs.Debug("路由【%s】规则匹配失败：标签=%s, 期望值=%s, 实际值=%s", router_value.Name, rule.Name, rule.Value, label_value)
+                        }
+                    }
+                }
+            }
+            if !labelFound {
+                logs.Debug("路由【%s】规则匹配失败：标签=%s 在告警中未找到", router_value.Name, rule.Name)
+            }
+        }
 
 		//判断如果路由规则匹配，需要替换url到现有的参数中
 		if rules_num == rules_num_match {
-			PMsg.Type = router_value.Tpl.Tpltype
-			PMsg.Tpl = router_value.Tpl.Tpl
+			is_matched = true
+			// 检查是否发送告警，如果SendAlert为false，则抑制该告警
+			if router_value.SendAlert == false {
+				logs.Info("告警路由【%s】匹配成功，设置为不发送，抑制该告警。", router_value.Name)
+				return []PrometheusAlertMsg{} // 返回空切片，抑制所有消息
+			}
+
+			logs.Info("告警路由【%s】匹配成功，准备发送告警", router_value.Name)
+			newMsg := PMsg // 创建一个副本以防修改原始PMsg
+			newMsg.Type = router_value.Tpl.Tpltype
+			newMsg.Tpl = router_value.Tpl.Tpl
 			atSomeOne := router_value.AtSomeOne
 			if router_value.AtSomeOneRR {
 				openIds := strings.Split(router_value.AtSomeOne, ",")
@@ -283,39 +304,45 @@ func AlertRouterSet(xalert map[string]interface{}, PMsg PrometheusAlertMsg, Tpl 
 
 			switch router_value.Tpl.Tpltype {
 			case "wx":
-				PMsg.Wxurl = router_value.UrlOrPhone
-				PMsg.AtSomeOne = atSomeOne
+				newMsg.Wxurl = router_value.UrlOrPhone
+				newMsg.AtSomeOne = atSomeOne
 			//钉钉渠道
 			case "dd":
-				PMsg.Ddurl = router_value.UrlOrPhone
-				PMsg.AtSomeOne = atSomeOne
+				newMsg.Ddurl = router_value.UrlOrPhone
+				newMsg.AtSomeOne = atSomeOne
 			//飞书渠道
 			case "fs":
-				PMsg.Fsurl = router_value.UrlOrPhone
-				PMsg.AtSomeOne = atSomeOne
+				newMsg.Fsurl = router_value.UrlOrPhone
+				newMsg.AtSomeOne = atSomeOne
 			//Webhook渠道
 			case "webhook":
-				PMsg.WebHookUrl = router_value.UrlOrPhone
+				newMsg.WebHookUrl = router_value.UrlOrPhone
 			//邮件
 			case "email":
-				PMsg.Email = router_value.UrlOrPhone
+				newMsg.Email = router_value.UrlOrPhone
 			//百度Hi(如流)
 			case "rl":
-				PMsg.GroupId = router_value.UrlOrPhone
+				newMsg.GroupId = router_value.UrlOrPhone
 			//短信、电话
 			case "txdx", "hwdx", "bddx", "alydx", "txdh", "alydh", "rlydh", "7moordx", "7moordh":
-				PMsg.Phone = router_value.UrlOrPhone
+				newMsg.Phone = router_value.UrlOrPhone
 			//异常参数
 			default:
 				logs.Info("暂未支持的路由！")
 			}
-
 			//匹配路由完成加入返回列表
-			return_Msgs = append(return_Msgs, PMsg)
-		}
+			return_Msgs = append(return_Msgs, newMsg)
 
+		} else {
+            logs.Info("告警路由【%s】匹配失败，规则总数=%d, 匹配成功数=%d", router_value.Name, rules_num, rules_num_match)
+        }
+
+    }
+	// 如果没有任何路由匹配，则使用默认模板发送
+	if !is_matched {
+		PMsg.Tpl = Tpl
+		return_Msgs = append(return_Msgs, PMsg)
 	}
-
 	return return_Msgs
 }
 

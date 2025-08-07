@@ -14,6 +14,7 @@ type AlertRouter struct {
 	AtSomeOne    string
 	AtSomeOneRR  bool
 	SendResolved bool
+	SendAlert    bool `orm:"default(true)"` // 新增字段：是否发送告警，默认值为true（发送）
 	Created      time.Time
 }
 
@@ -22,7 +23,7 @@ type AlertRouterQuery struct {
 	Webhook string
 }
 
-func AddAlertRouter(id int, tplid int, name, rules, url_or_phone, at_some_one string, at_some_one_rr bool, sendResolved bool) error {
+func AddAlertRouter(id int, tplid int, name, rules, url_or_phone, at_some_one string, at_some_one_rr, sendResolved, sendAlert bool) error {
 	tpl, _ := GetTpl(tplid)
 	o := orm.NewOrm()
 	AlertRouter_table := &AlertRouter{
@@ -34,6 +35,7 @@ func AddAlertRouter(id int, tplid int, name, rules, url_or_phone, at_some_one st
 		AtSomeOne:    at_some_one,
 		AtSomeOneRR:  at_some_one_rr,
 		SendResolved: sendResolved,
+		SendAlert:    sendAlert, // 新增字段处理
 		Created:      time.Now(),
 	}
 	// 插入数据
@@ -41,7 +43,7 @@ func AddAlertRouter(id int, tplid int, name, rules, url_or_phone, at_some_one st
 	return err
 }
 
-func UpdateAlertRouter(id int, tplid int, name, rules, url_or_phone, at_some_one string, at_some_one_rr bool, sendResolved bool) error {
+func UpdateAlertRouter(id int, tplid int, name, rules, url_or_phone, at_some_one string, at_some_one_rr, sendResolved, sendAlert bool) error {
 	tpl, _ := GetTpl(tplid)
 	o := orm.NewOrm()
 	router_update := &AlertRouter{Id: id}
@@ -55,6 +57,7 @@ func UpdateAlertRouter(id int, tplid int, name, rules, url_or_phone, at_some_one
 		router_update.AtSomeOne = at_some_one
 		router_update.AtSomeOneRR = at_some_one_rr
 		router_update.SendResolved = sendResolved
+		router_update.SendAlert = sendAlert // 新增字段处理
 		router_update.Created = time.Now()
 		_, err := o.Update(router_update)
 		return err

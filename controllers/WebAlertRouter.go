@@ -53,6 +53,7 @@ type AlertRouterJson struct {
 	RouterPat          string
 	RouterPatRR        bool
 	RouterSendResolved bool
+	RouterSendAlert    bool // 新增字段：是否发送告警
 	Rules              []LabelMap
 }
 
@@ -74,11 +75,11 @@ func (c *MainController) AddRouter() {
 	rules, err := json.Marshal(WebAlertRouterJson.Rules)
 	if WebAlertRouterJson.RouterId == "" {
 		tpl_id_int, _ := strconv.Atoi(WebAlertRouterJson.RouterTplId)
-		err = models.AddAlertRouter(0, tpl_id_int, WebAlertRouterJson.RouterName, string(rules), WebAlertRouterJson.RouterPurl, WebAlertRouterJson.RouterPat, WebAlertRouterJson.RouterPatRR, WebAlertRouterJson.RouterSendResolved)
+		err = models.AddAlertRouter(0, tpl_id_int, WebAlertRouterJson.RouterName, string(rules), WebAlertRouterJson.RouterPurl, WebAlertRouterJson.RouterPat, WebAlertRouterJson.RouterPatRR, WebAlertRouterJson.RouterSendResolved, WebAlertRouterJson.RouterSendAlert)
 	} else {
 		id, _ := strconv.Atoi(WebAlertRouterJson.RouterId)
 		tpl_id_int, _ := strconv.Atoi(WebAlertRouterJson.RouterTplId)
-		err = models.UpdateAlertRouter(id, tpl_id_int, WebAlertRouterJson.RouterName, string(rules), WebAlertRouterJson.RouterPurl, WebAlertRouterJson.RouterPat, WebAlertRouterJson.RouterPatRR, WebAlertRouterJson.RouterSendResolved)
+		err = models.UpdateAlertRouter(id, tpl_id_int, WebAlertRouterJson.RouterName, string(rules), WebAlertRouterJson.RouterPurl, WebAlertRouterJson.RouterPat, WebAlertRouterJson.RouterPatRR, WebAlertRouterJson.RouterSendResolved, WebAlertRouterJson.RouterSendAlert)
 	}
 	var resp interface{}
 	resp = err

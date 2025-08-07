@@ -130,6 +130,16 @@
 
 			<br />
 			<div class="row">
+					<div class="col-sm-6">
+						<!-- select -->
+						<div class="form-group">
+							<label>是否发送告警</label>
+							<select class="form-control" name="send_alert" id="send_alert">
+								<option value="true">发送</option>
+								<option value="false">不发送</option>
+							</select>
+						</div>
+					</div>
 
 					<div class="col-sm-6">
 						<!-- select -->
@@ -338,6 +348,12 @@ function savetpl(){
 		send_resolved=send_resolved==='true'
 	}
 
+    // 获取send_alert值, 转为Boolean类型
+    var send_alert = document.getElementById("send_alert").value;
+    if (send_alert === "true" || send_alert === "false"){
+        send_alert=send_alert==='true'
+    }
+
 	var alert_router_json_str={
 		RouterId: $('#id').val(),
 		RouterName: $('#name').val(),
@@ -346,6 +362,7 @@ function savetpl(){
 		RouterPat: $('#pat').val(),
 		RouterPatRR: $("#patrr").is(":checked"),
 		RouterSendResolved: send_resolved,
+		RouterSendAlert: send_alert, // 新增字段
 		Rules: RouterRules
 	};
 
